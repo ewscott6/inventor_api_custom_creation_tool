@@ -1,0 +1,108 @@
+using System;
+using Inventor;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Runtime.InteropServices;
+using System.IO;
+using System.IO.Ports;
+using System.Security.Policy;
+using System.Web;
+
+namespace ConverterApp
+{
+    class Program
+    {
+        // file path to the part file
+        //static string partFilePath = @"C:/Users/Liam/Desktop/Parts/allsizes/4000120.ipt";
+
+        static void Main(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                Console.WriteLine("Please provide a file path to the part file");
+                return;
+            }
+            string partFilePath = args[0];
+            Console.WriteLine("Part file path: " + partFilePath);
+            // Create a new instance of Inventor
+            Inventor.Application inventorApp;
+            try
+            {
+                Console.WriteLine("Using active Inventor application");
+                inventorApp = System.Runtime.InteropServices.Marshal.GetActiveObject("Inventor.Application") as Application;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Unable to get active Inventor application. Creating a new instance of Inventor.");
+                // If unable to get active object, create a new instance of Inventor
+                Type inventorAppType = Type.GetTypeFromProgID("Inventor.Application");
+                inventorApp = (Inventor.Application)Activator.CreateInstance(inventorAppType);
+                inventorApp.Visible = true; // Make the Inventor application visible
+            }
+
+            // Create a new assembly document
+            AssemblyDocument assemblyDoc = (AssemblyDocument)inventorApp.Documents.Add(DocumentTypeEnum.kAssemblyDocumentObject, "", true);
+
+            // Add the part to the assembly document
+            ComponentOccurrence part = AddPartToAssembly(partFilePath, assemblyDoc, inventorApp);
+
+            // Update assembly document
+            assemblyDoc.Update();
+
+            // Save assembly document as a .stp file
+            string docPath = assemblyDoc.FullFileName;
+            Console.WriteLine("Document path: " + docPath);
+
+            string newFilePath = docPath.Substring(0, docPath.LastIndexOf('.')) + ".stp";
+            assemblyDoc.SaveAs(newFilePath, false);
+            Console.WriteLine("Assembly saved as: " + newFilePath);
+        }
+
+        // Function to add a pipe and flange to an assembly and apply mate constraints
+        static ComponentOccurrence AddPartToAssembly(string partFileName, in AssemblyDocument assemblyDoc, in Inventor.Application inventorApp)
+        {
+            // Create transient geometry for positioning parts
+            TransientGeometry transGeometry = inventorApp.TransientGeometry;
+
+            // Add the part occurrence to the assembly
+            ComponentOccurrence partOccurrence = assemblyDoc.ComponentDefinition.Occurrences.Add(partFileName, transGeometry.CreateMatrix());
+
+            return partOccurrence;
+        }
+
+        static void ConvertIptToStp(string inputFilePath, string outputFilePath, Inventor.Application _inventorApp)
+    {
+        Document doc = null;
+        try
+        {
+            // Open the .ipt file
+            doc = _inventorApp.Documents.Open(inputFilePath, true);
+            // Export to .stp
+            TranslationContext context = _inventorApp.TransientObjects.CreateTranslationContext();
+            NameValueMap options = _inventorApp.TransientObjects.CreateNameValueMap();
+            context.Type = IOMechanismEnum.kFileBrowseIOMechanism;
+            DataMedium dataMedium = _inventorApp.TransientObjects.CreateDataMedium();
+            
+            // Check if the STEP translator is available
+            if (_inventorApp.ApplicationAddIns.ItemById["{90AF7F40-0C01-11D5-8E83-0010B541CD80}"] is ApplicationAddIn stepAddin)
+            {
+                options.Value["ExportUnits"] = "cm";  // Or other unit types based on requirement
+                dataMedium.FileName = outputFilePath;
+                stepAddin.Activate();
+                doc.SaveAs(dataMedium, context, options);
+            }
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Error encountered: " + e.Message);
+        }
+        finally
+        {
+            // Close the document
+            doc?.Close();
+        }
+    }
+    }
+}
